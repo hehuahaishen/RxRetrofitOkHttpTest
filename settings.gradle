@@ -1,0 +1,2 @@
+include ':app', ':RxRetrofitOkHttp'
+project(':RxRetrofitOkHttp').projectDir = new File('libraries/RxRetrofitOkHttp')
