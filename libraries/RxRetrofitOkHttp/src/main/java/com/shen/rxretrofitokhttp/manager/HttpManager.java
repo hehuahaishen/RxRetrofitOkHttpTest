@@ -19,6 +19,7 @@ import io.reactivex.schedulers.Schedulers;
 import okhttp3.OkHttpClient;
 import okhttp3.logging.HttpLoggingInterceptor;
 import retrofit2.Retrofit;
+import retrofit2.converter.gson.GsonConverterFactory;
 import retrofit2.converter.scalars.ScalarsConverterFactory;
 
 /**
@@ -26,13 +27,17 @@ import retrofit2.converter.scalars.ScalarsConverterFactory;
  */
 public class HttpManager {
 
+    private enum Type{
+        STRING,
+        GSON
+    }
 
     public HttpManager(){
 
     }
 
     public void start(BaseApi basePar, Observer observer){
-        getObservable(basePar)
+        getObservable(basePar, Type.STRING)
                 .onErrorResumeNext(new ExceptionFunc())             // 异常处理  -- 有异常才触发???
                 .map(new ResultFunc())                              // 返回数据统一判断
                 .subscribeOn(Schedulers.io())
@@ -43,7 +48,7 @@ public class HttpManager {
 
 
     public void startRetry(BaseApi basePar, Observer observer){
-        getObservable(basePar)
+        getObservable(basePar, Type.STRING)
                 .retryWhen(new RetryWhenNetworkException(           // 重试
                                 basePar.getRetryCount(),
                                 basePar.getRetryDelay(),
@@ -59,6 +64,32 @@ public class HttpManager {
     }
 
 
+    public void startGson(BaseApi basePar, Observer observer){
+        getObservable(basePar, Type.GSON)
+                .onErrorResumeNext(new ExceptionFunc())             // 异常处理  -- 有异常才触发???
+                .map(new ResultFunc())                              // 返回数据统一判断
+                .subscribeOn(Schedulers.io())
+                .unsubscribeOn(Schedulers.io())                     // 取消订阅？
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(observer);                               // 订阅
+    }
+
+
+    public void startGsonRetry(BaseApi basePar, Observer observer){
+        getObservable(basePar, Type.GSON)
+                .retryWhen(new RetryWhenNetworkException(           // 重试
+                                basePar.getRetryCount(),
+                                basePar.getRetryDelay(),
+                                basePar.getRetryIncreaseDelay()
+                        )
+                )
+                .onErrorResumeNext(new ExceptionFunc())             // 异常处理  -- 有异常才触发???
+                .map(new ResultFunc())                              // 返回数据统一判断
+                .subscribeOn(Schedulers.io())
+                .unsubscribeOn(Schedulers.io())                     // 取消订阅？
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(observer);                               // 订阅
+    }
     /*-----------------------------------------------------------------------------------*/
     /*-----------------------------------------------------------------------------------*/
     /*-----------------------------------------------------------------------------------*/
@@ -68,13 +99,13 @@ public class HttpManager {
      * @param basePar 封装的请求数据
      * @return
      */
-    private Observable getObservable(BaseApi basePar){
-        Retrofit retrofit = getRetrofit(basePar);
+    private Observable getObservable(BaseApi basePar, Type type){
+        Retrofit retrofit = getRetrofit(basePar, type);
         return basePar.getObservable(retrofit);
     }
 
 
-    private Retrofit getRetrofit(BaseApi baseApi){
+    private Retrofit getRetrofit(BaseApi baseApi, Type type){
         // 创建 OKHttpClient
         OkHttpClient.Builder builder = new OkHttpClient.Builder();
         builder.connectTimeout(baseApi.getConnectionTime(), TimeUnit.SECONDS);  // 连接超时时间
@@ -93,14 +124,34 @@ public class HttpManager {
                 .build();
         builder.addInterceptor(commonInterceptor);
 
+        Retrofit retrofit = null;
+        switch (type){
+            case STRING:
+                retrofit = new Retrofit.Builder()
+                        .client(builder.build())
+                        .baseUrl(baseApi.getBaseUrl())
+                        .addCallAdapterFactory(RxJava2CallAdapterFactory.create())
+                        .addConverterFactory(ScalarsConverterFactory.create())
+                        .build();
+                break;
 
-        // 创建Retrofit
-        Retrofit retrofit = new Retrofit.Builder()
-                .client(builder.build())
-                .baseUrl(baseApi.getBaseUrl())
-                .addCallAdapterFactory(RxJava2CallAdapterFactory.create())
-                .addConverterFactory(ScalarsConverterFactory.create())
-                .build();
+            case GSON:
+                retrofit = new Retrofit.Builder()
+                        .client(builder.build())
+                        .baseUrl(baseApi.getBaseUrl())
+                        .addCallAdapterFactory(RxJava2CallAdapterFactory.create())
+                        .addConverterFactory(GsonConverterFactory.create())
+                        .build();
+                break;
+        }
+
+//        // 创建Retrofit
+//        Retrofit retrofit = new Retrofit.Builder()
+//                .client(builder.build())
+//                .baseUrl(baseApi.getBaseUrl())
+//                .addCallAdapterFactory(RxJava2CallAdapterFactory.create())
+//                .addConverterFactory(ScalarsConverterFactory.create())
+//                .build();
 
         return retrofit;
     }
